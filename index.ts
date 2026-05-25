@@ -97,18 +97,24 @@ function findImageFromOtherAgent(messages: MessageWithParts[], agentName: string
 function extractAssistantText(msg: MessageWithParts | undefined): string | null {
   if (!msg || msg.info.role !== "assistant") return null
 
-  // Primary: extract from text parts
-  const texts = msg.parts
+  const textParts = msg.parts
     .filter((p): p is Part & { text: string } => p.type === "text" && typeof p.text === "string")
     .map((p) => p.text)
-  const combined = texts.join("\n").trim()
-  if (combined) return combined
-
-  // Fallback: reasoning models put content in reasoning parts
-  const reasonings = msg.parts
+  const reasoningParts = msg.parts
     .filter((p): p is Part & { text: string } => p.type === "reasoning" && typeof p.text === "string")
     .map((p) => p.text)
-  return reasonings.join("\n").trim() || null
+
+  const textContent = textParts.join("\n").trim()
+  const reasoningContent = reasoningParts.join("\n").trim()
+
+  // Reasoning models may put the real analysis in reasoning while text
+  // contains tool-call artifacts (e.g. <arg_key>/</tool_call>). In that
+  // case skip text and use reasoning.
+  const looksLikeToolCall = textContent.includes("</tool_call>") || textContent.includes("<arg_key>")
+
+  if (textContent && !looksLikeToolCall) return textContent
+  if (reasoningContent) return reasoningContent
+  return textContent || null
 }
 
 function buildTextPart(template: Part, text: string): Part {
