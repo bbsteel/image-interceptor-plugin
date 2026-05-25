@@ -310,10 +310,7 @@ const serverPlugin: Plugin = async (input: PluginInput, options?: Record<string,
       log("messages.transform invoked", { msgCount: output.messages.length })
 
       const found = findImageFromOtherAgent(output.messages, agentName)
-      if (!found) {
-        log("skip — no user image from non-looker agent (sub-session or no image)")
-        return
-      }
+      if (!found) return
 
       log("image found", { idx: found.idx, sessionID: found.msg.info.sessionID, agent: found.msg.info.agent })
 
