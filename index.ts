@@ -84,7 +84,7 @@ function resolveAgent(options?: Record<string, unknown>): string {
   return DEFAULT_AGENT
 }
 
-function findUserMessageWithImage(messages: MessageWithParts[], agentName: string): { idx: number; msg: MessageWithParts } | null {
+function findImageFromOtherAgent(messages: MessageWithParts[], agentName: string): { idx: number; msg: MessageWithParts } | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
     if (m.info.role !== "user") continue
@@ -309,7 +309,7 @@ const serverPlugin: Plugin = async (input: PluginInput, options?: Record<string,
 
       log("messages.transform invoked", { msgCount: output.messages.length })
 
-      const found = findUserMessageWithImage(output.messages, agentName)
+      const found = findImageFromOtherAgent(output.messages, agentName)
       if (!found) {
         log("skip — no user image from non-looker agent (sub-session or no image)")
         return
