@@ -2,5 +2,5 @@
   "name": "image-interceptor",
   "version": "1.0.0",
   "type": "module",
-  "main": "index.ts"
+  "main": "image-interceptor.ts"
 }

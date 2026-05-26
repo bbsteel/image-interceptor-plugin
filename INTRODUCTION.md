@@ -34,7 +34,7 @@
 
 ## 使用
 
-`index.ts` 放入 `~/.opencode/plugins/` 目录即可。OpenCode 会通过 Bun 的 TypeScript 原生支持直接加载。
+`image-interceptor.ts` 放入 `~/.opencode/plugins/` 目录即可。OpenCode 会通过 Bun 的 TypeScript 原生支持直接加载。
 
 opencode.json 配置：
 

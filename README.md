@@ -10,7 +10,7 @@ This plugin intercepts images before they are discarded, sends them to a vision 
 
 ## Usage
 
-Place `index.ts` in `~/.opencode/plugins/`, or reference it in `opencode.json`:
+Place `image-interceptor.ts` in `~/.opencode/plugins/`, or reference it in `opencode.json`:
 
 ```jsonc
 {
