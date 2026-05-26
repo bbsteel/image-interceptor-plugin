@@ -96,7 +96,6 @@ function resolveAgent(options?: Record<string, unknown>): string {
 function findImageFromOtherAgent(messages: MessageWithParts[], agentName: string): { idx: number; msg: MessageWithParts } | null {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i]
-    if (m.info.role !== "user") continue
     if (m.info.agent === agentName) continue
     if (m.parts.some(isImageFile)) return { idx: i, msg: m }
   }
