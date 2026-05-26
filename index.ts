@@ -11,6 +11,7 @@ import * as path from "node:path"
 import { createHash } from "node:crypto"
 
 const DEFAULT_AGENT = "image-looker"
+const DEFAULT_MAX_IMAGE_SIZE_KB = 1000
 const ANALYSIS_TIMEOUT_MS = 60_000
 const MAX_RETRIES = 2
 
@@ -59,6 +60,14 @@ function getImageData(part: Part): ImageData | null {
   const url = part.url ?? ""
   const mime = part.mime ?? "image/png"
   return url ? { url, mime } : null
+}
+
+function estimateImageSizeKB(url: string): number {
+  // data URL is `data:image/png;base64,<b64>` — strip header, estimate
+  // original bytes from base64 length (ratio ~3/4)
+  const comma = url.indexOf(",")
+  const b64 = comma === -1 ? url : url.slice(comma + 1)
+  return (b64.length * 0.75) / 1024
 }
 
 function imageCacheKey(url: string): string {
@@ -270,7 +279,10 @@ async function analyzeWithRetry(
 
 const serverPlugin: Plugin = async (input: PluginInput, options?: Record<string, unknown>) => {
   const agentName = resolveAgent(options)
-  log("plugin loaded", { agent: agentName, directory: input.directory })
+  const maxImageSizeKB = (options && typeof options.maxImageSizeKB === "number" && options.maxImageSizeKB > 0)
+    ? options.maxImageSizeKB
+    : DEFAULT_MAX_IMAGE_SIZE_KB
+  log("plugin loaded", { agent: agentName, maxImageSizeKB, directory: input.directory })
 
   // Lazily resolve agent model from config on first use
   let model: string | undefined
@@ -332,21 +344,28 @@ const serverPlugin: Plugin = async (input: PluginInput, options?: Record<string,
       try {
         const resolvedModel = await resolveModel()
         const imgParts = found.msg.parts.filter(isImageFile)
-        const otherParts = found.msg.parts.filter((p) => !isImageFile(p))
-        log("image parts", { total: imgParts.length, otherParts: otherParts.length })
+        const nonImgParts = found.msg.parts.filter((p) => !isImageFile(p))
+        log("image parts", { total: imgParts.length, otherParts: nonImgParts.length })
+
+        // Split images by size: oversized stay untouched, rest get analyzed
+        const toAnalyze: Array<{ img: Part; data: ImageData }> = []
+        const oversized: Part[] = []
+        for (const img of imgParts) {
+          const data = getImageData(img)
+          if (!data) continue
+          if (estimateImageSizeKB(data.url) > maxImageSizeKB) {
+            log("image too large — keeping original", { sizeKB: Math.round(estimateImageSizeKB(data.url)), limit: maxImageSizeKB })
+            oversized.push(img)
+          } else {
+            toAnalyze.push({ img, data })
+          }
+        }
 
         const results: string[] = []
         let failed = 0
 
-        for (const img of imgParts) {
-          const data = getImageData(img)
-          if (!data) {
-            log("no image data", { partType: img.type })
-            failed++
-            continue
-          }
-
-          log("image data", { mime: data.mime, urlLen: data.url.length, urlPreview: data.url.slice(0, 100) })
+        for (const { img, data } of toAnalyze) {
+          log("image data", { mime: data.mime, sizeKB: Math.round(estimateImageSizeKB(data.url)), urlPreview: data.url.slice(0, 100) })
 
           const key = imageCacheKey(data.url)
           if (cache.has(key)) {
@@ -365,25 +384,21 @@ const serverPlugin: Plugin = async (input: PluginInput, options?: Record<string,
           }
         }
 
-        const total = imgParts.length
-        log("analysis complete", { total, succeeded: results.length, failed })
+        const total = toAnalyze.length
+        log("analysis complete", { total, succeeded: results.length, failed, oversized: oversized.length })
 
         if (results.length > 0) {
           const replacementText = createAnalysisResultText(results, total, failed)
-          log("replacing parts", { msgIdx: found.idx, textLen: replacementText.length })
           output.messages[found.idx].parts = [
-            ...otherParts,
+            ...nonImgParts,
+            ...oversized,
             buildTextPart(imgParts[0], replacementText),
           ]
-          log("parts replaced", {
-            finalPartCount: output.messages[found.idx].parts.length,
-            finalTextLen: replacementText.length,
-            finalPreview: replacementText.slice(0, 200),
-          })
-        } else if (failed === total) {
+        } else if (total > 0 && failed === total) {
           log("all failed — injecting degradation text")
           output.messages[found.idx].parts = [
-            ...otherParts,
+            ...nonImgParts,
+            ...oversized,
             buildTextPart(imgParts[0], createDegradationText(total)),
           ]
         }
